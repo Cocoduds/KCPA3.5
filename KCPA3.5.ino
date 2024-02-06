@@ -54,6 +54,11 @@ SdFat                SD;         // SD card filesystem
 Adafruit_ImageReader reader(SD); // Image-reader object, pass in SD filesys
 File myFile;
 
+uint32_t index_next_filename;
+// Create a CSV file name in 8.3 format. I will encode a file sequence
+// number in the last three characters. For example: flowM000.csv
+char csv_filename[13] = "0001axxx.csv";
+
 Adafruit_ST7789      tft    = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 Adafruit_Image       img;        // An image loaded into RAM
 int32_t              width  = 0, // BMP image dimensions
@@ -110,19 +115,19 @@ int LED_pin = RED_LED_PIN;
 void setup(void) {
 
   ImageReturnCode stat; // Status from image-reading functions
-  Serial.begin(9600);
-  while(!Serial);       // Wait for Serial Monitor before continuing
+  // Serial.begin(9600);
+  // while(!Serial);       // Wait for Serial Monitor before continuing
   tft.init(135, 240);           // Init ST7789 320x240
 
   // SD card
   tft.print(F("Initializing filesystem..."));
   if(!SD.begin(SD_CS, SD_SCK_MHZ(10))) { // Breakouts require 10 MHz limit due to longer wires
-    Serial.println(F("SD begin() failed"));
+    // Serial.println(F("SD begin() failed"));
     for(;;); // Fatal error, do not continue
   }
-  Serial.println(F("OK!"));
+  tft.println(F("OK!"));
 
-  Serial.print(F("Loading startup.bmp to screen..."));
+  // Serial.print(F("Loading startup.bmp to screen..."));
   reader.drawBMP("/startup.bmp", tft, 0, 0);
 
 
@@ -178,18 +183,18 @@ void setup(void) {
   tft.println("BLE is now connected.");
 
   // now try changing the name of the BLE device.
-  Serial.println("About to change bluetoothLE module name via the command\n   ");
-  Serial.println(SETBLUETOOTHNAME);
+  // Serial.println("About to change bluetoothLE module name via the command\n   ");
+  // Serial.println(SETBLUETOOTHNAME);
   ble.println(SETBLUETOOTHNAME);
 
   // Set module to DATA mode
-  Serial.println( F("Switching to DATA mode!") );
+  // Serial.println( F("Switching to DATA mode!") );
   ble.setMode(BLUEFRUIT_MODE_DATA);
 
   // see Adafruit_BluefruitLE_SPI.cpp.
   // mode choices are  BLUEFRUIT_MODE_COMMAND and BLUEFRUIT_MODE_DATA
 
-  Serial.println("Setup Complete");
+  // Serial.println("Setup Complete");
   tft.print("Setup Complete");
 
   tft.fillScreen(ST77XX_BLACK);
@@ -211,18 +216,17 @@ int run = 0;
 void loop() {
   // Check for user input from the serial monitor input field
   char n, inputs[BUFSIZE+1];
+ 
+  // if (Serial.available()){
+  //   n = Serial.readBytes(inputs, BUFSIZE);
+  //   // inputs[n] = 0;
+  //   // Send characters to Bluefruit
+  //   Serial.print("Sending to iPhone: ");
+  //   Serial.println(inputs);
 
-  
-  if (Serial.available()){
-    n = Serial.readBytes(inputs, BUFSIZE);
-    // inputs[n] = 0;
-    // Send characters to Bluefruit
-    Serial.print("Sending to iPhone: ");
-    Serial.println(inputs);
-
-    // Send input data to host via Bluefruit
-    ble.print(inputs);
-  }
+  //   // Send input data to host via Bluefruit
+  //   ble.print(inputs);
+  // }
 
   // Echo received-from-iPhone data
   while (ble.available()){
@@ -239,23 +243,31 @@ void loop() {
     if(iPhone_last_message_length > BUFSIZE) {iPhone_last_message_length = 0;}
 
     if(c == ASCII_CR){
-      Serial.print("Command: '");
+      // Serial.print("Command: '");
 
       // add a null after the message, where the carriage return is.
       iPhone_last_message[iPhone_last_message_length - 1] = '\0';
 
-      Serial.print(iPhone_last_message);
-      Serial.println("'");
+      // Serial.print(iPhone_last_message);
+      // Serial.println("'");
       iPhone_last_message_length = 0;
 
       if(is_number(iPhone_last_message)){ // manual data taking
             tft.fillScreen(ST77XX_BLACK);
+            tft.setCursor(1,1);
             tft.println(F("started manual data taking"));
             int run_start = micros();
-            for(int i=1; i<16; i++){
+            for(int i=1; i<3; i++){
               takeData(extractIntegerWords(iPhone_last_message), i);
               while (micros()-run_start < 7000000*i){}
             }
+            tft.fillScreen(ST77XX_BLACK);
+            tft.setCursor(1,1);
+            tft.println(F("Commands:"));
+            tft.println(F("run - full test"));
+            tft.println(F("# - manual data taking"));
+            tft.println(F("set # - set run # (legacy)"));
+            tft.println(F("sp - audio spectrum (restart to exit)"));
          } 
 
       else if (iPhone_last_message[0] == 's' && iPhone_last_message[1] == 'e' && iPhone_last_message[2] == 't'){ // set run number
@@ -289,7 +301,7 @@ void loop() {
            } 
 
       else{ 
-            Serial.println("unrecognized command");
+            // Serial.println("unrecognized command");
             ble.println("unrecognized command");
          }
     }
@@ -301,7 +313,7 @@ void loop() {
 
 //---------- A small helper ----------
 void error(const __FlashStringHelper*err) {
-  Serial.println(err);
+  // Serial.println(err);
   while (1);
 }
 
@@ -368,15 +380,54 @@ void takeData (double run_freq, int run){
   }
   freq = size/((micros() - startTime) * 0.000001);
 
-  // save the data
-  stringstream stream;
-  stream<<run_freq<<" "<<run;
-  string str1, str2;
-  stream>>str1>>str2;
-  string title = str2 + "a" + str1 +".txt";
-  tft.println(title.c_str());
-  SD.remove(title.c_str());
-  myFile = SD.open(title.c_str(), FILE_WRITE);
+  // save the data THANKS GEORGE FOR FILENAMING
+  // find an unused file name
+  // I'll use this flag in the loop searching for the first unused filename.
+  bool have_a_name = false;
+
+  // start at 0, and loop up to 1000.
+  long index_filename;
+  long index_start = 0;
+
+  for (index_filename = index_start; index_filename <= 1000; index_filename++) 
+  {
+    if (have_a_name) break;
+
+    index_next_filename = index_filename;
+
+    // Now create a filename for this value of index_next_filename,
+    // which is a global variable. name is in csv_filename.
+
+    // get the least significant hexadecimal digit:
+    long test1 = index_next_filename;
+    int digit7 = test1 % 10;
+
+    // keep going...
+    test1 = (test1 - digit7) / 10;
+    int digit6 = test1 % 10;
+
+    test1 = (test1 - digit6) / 10;
+    int digit5 = test1 % 10;
+
+    // now convert each digit to ASCII characters. Recall that
+    // the ASCII character '0' is 48, '1' is 49,... '9' is 57.
+
+    csv_filename[7] = digit7 + 48;
+    csv_filename[6] = digit6 + 48;
+    csv_filename[5] = digit5 + 48;
+
+    //////////////////////////////////////////////////////
+    // now that we've constructed a filename, see if it already exists.
+
+    if (!SD.exists(csv_filename)) {
+      have_a_name = true;
+      // Serial.println(F(">>>     file doesn't exist, so that is for us!")); 
+    } else {
+      // Serial.println(F(">>>     file exists, so keep going.")); 
+    }
+  }
+  tft.print(csv_filename);
+  myFile.open(csv_filename, FILE_WRITE);
   if(myFile){
     myFile.println("raw data");
     for (int j=0; j<size;j++){
@@ -384,7 +435,8 @@ void takeData (double run_freq, int run){
     }
     myFile.println(freq);
     myFile.close();
-    ble.println("data saved");
+    ble.println(" data saved");
+    tft.println(F("data saved"));
     // blink_LED(100);
   }
   else{
