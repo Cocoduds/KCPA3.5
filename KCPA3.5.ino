@@ -258,8 +258,9 @@ void loop() {
             tft.println(F("started manual data taking"));
             int run_start = micros();
             for(int i=1; i<3; i++){
+              delay(1000);
               takeData(extractIntegerWords(iPhone_last_message), i);
-              while (micros()-run_start < 7000000*i){}
+              while (micros()-run_start < 9000000*i){}
             }
             tft.fillScreen(ST77XX_BLACK);
             tft.setCursor(1,1);
