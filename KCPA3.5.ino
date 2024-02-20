@@ -14,6 +14,7 @@
 #include "Adafruit_BluefruitLE_SPI.h"
 #include "Adafruit_BluefruitLE_UART.h"
 #include "Adafruit_ZeroFFT.h"
+#include "RTClib.h"
 
 using namespace std;
 
@@ -110,6 +111,11 @@ int LED_pin = RED_LED_PIN;
 #define LED_OFF LOW
 #define LED_ON HIGH
 
+
+//---------- RTC ----------
+RTC_DS3231 rtc;
+
+
 //---------- SETUP ----------
 
 void setup(void) {
@@ -172,6 +178,11 @@ void setup(void) {
   tft.print("Requesting Bluefruit info: ");
   ble.info();
 
+  // now try changing the name of the BLE device.
+  // Serial.println("About to change bluetoothLE module name via the command\n   ");
+  // Serial.println(SETBLUETOOTHNAME);
+  ble.println(SETBLUETOOTHNAME);
+
   tft.println(F("Please use Adafruit Bluefruit LE app to connect in UART mode"));
 
   // debug info is a little annoying after this point!
@@ -182,11 +193,6 @@ void setup(void) {
   while (! ble.isConnected()) {delay(500);}
   tft.println("BLE is now connected.");
 
-  // now try changing the name of the BLE device.
-  // Serial.println("About to change bluetoothLE module name via the command\n   ");
-  // Serial.println(SETBLUETOOTHNAME);
-  ble.println(SETBLUETOOTHNAME);
-
   // Set module to DATA mode
   // Serial.println( F("Switching to DATA mode!") );
   ble.setMode(BLUEFRUIT_MODE_DATA);
@@ -194,6 +200,28 @@ void setup(void) {
   // see Adafruit_BluefruitLE_SPI.cpp.
   // mode choices are  BLUEFRUIT_MODE_COMMAND and BLUEFRUIT_MODE_DATA
 
+
+  //----------RTC----------
+  if (! rtc.begin()) {
+    while (1) delay(10);
+  }
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, let's set the time!");
+    // When time needs to be set on a new device, or after a power loss, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
+  DateTime now = rtc.now();
+  csv_filename[0] = firstDigit(now.day()) + 48;
+  csv_filename[1] = lastDigit(now.day()) + 48;
+  csv_filename[2] = firstDigit(now.month()) + 48;
+  csv_filename[3] = lastDigit(now.month()) + 48;
+
+  //---------- END OF SETUP ----------
   // Serial.println("Setup Complete");
   tft.print("Setup Complete");
 
@@ -204,6 +232,7 @@ void setup(void) {
   tft.println(F("# - manual data taking"));
   tft.println(F("set # - set run # (legacy)"));
   tft.println(F("sp - audio spectrum (restart to exit)"));
+  tft.println(csv_filename);
 }
 
 
@@ -256,6 +285,7 @@ void loop() {
             tft.fillScreen(ST77XX_BLACK);
             tft.setCursor(1,1);
             tft.println(F("started manual data taking"));
+            delay(1000);
             int run_start = micros();
             for(int i=1; i<3; i++){
               delay(1000);
@@ -510,6 +540,25 @@ void spec(){
     }
   }
 }
+
+//---------- Helper functions for date to file name ----------
+int firstDigit(int n) 
+{ 
+    if (n<10){
+      return 0;
+    }
+    else{
+      while (n >= 10){// Remove last digit from number til only one digit is left 
+        n /= 10; 
+      }  
+      return n; // return the first digit 
+    }
+} 
+  
+int lastDigit(int n) 
+{ 
+    return (n % 10); // return the last digit 
+} 
 
 //---------- Data analysis ----------
 bool analyze(const std::string& s){
