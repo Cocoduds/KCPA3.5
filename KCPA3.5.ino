@@ -68,12 +68,8 @@ int32_t              width  = 0, // BMP image dimensions
 
 //---------- BLUETOOTH ----------
 
-// rewrite to name based on serial #
-// #define SETBLUETOOTHNAME  "AT+GAPDEVNAME=_P523_tone_generator"
-#define SETBLUETOOTHNAME  "AT+GAPDEVNAME=_P523_mic1"
-// #define SETBLUETOOTHNAME  "AT+GAPDEVNAME=_P523_mic2"
-// #define SETBLUETOOTHNAME  "AT+GAPDEVNAME=_P523_mic3"
-// #define SETBLUETOOTHNAME  "AT+GAPDEVNAME=_P523_mic4"
+// rewrite to name (add serial number junk)
+#define SETBLUETOOTHNAME  "AT+GAPDEVNAME=_P523_micA"
 
 #define name_start 14
 
@@ -180,7 +176,7 @@ void setup(void) {
 
   // now try changing the name of the BLE device.
   // Serial.println("About to change bluetoothLE module name via the command\n   ");
-  // Serial.println(SETBLUETOOTHNAME);
+  // Serial.println(SETBLUETOOTHNAME);  
   ble.println(SETBLUETOOTHNAME);
 
   tft.println(F("Please use Adafruit Bluefruit LE app to connect in UART mode"));
@@ -326,9 +322,23 @@ void loop() {
               while (micros()-run_start < 7500000*10 + 7500000*i){}
             }
            } 
+      else if (iPhone_last_message[0] == 'd' && iPhone_last_message[1] == 'e' && iPhone_last_message[2] == 'l'){ // set run number
+              clearSD();
+           } 
 
       else if (iPhone_last_message[0] == 's' && iPhone_last_message[1] == 'p'){ // easter egg
             spec();
+           } 
+
+      else if (iPhone_last_message[0] == 'f' && iPhone_last_message[1] == 'g'){ // set run number
+            Video();
+            tft.fillScreen(ST77XX_BLACK);
+            tft.setCursor(1,1);
+            tft.println(F("Commands:"));
+            tft.println(F("run - full test"));
+            tft.println(F("# - manual data taking"));
+            tft.println(F("set # - set run # (legacy)"));
+            tft.println(F("sp - audio spectrum (restart to exit)"));
            } 
 
       else{ 
@@ -559,6 +569,66 @@ int lastDigit(int n)
 { 
     return (n % 10); // return the last digit 
 } 
+
+//---------- File Deleter ----------
+void clearSD(){
+  bool no_files = false;
+
+  long index_filename;
+  long index_start = 0;
+
+  for (index_filename = index_start; index_filename <= 1000; index_filename++) 
+  {
+    if (no_files) break;
+
+    index_next_filename = index_filename;
+
+    long test1 = index_next_filename;
+    int digit7 = test1 % 10;
+
+    test1 = (test1 - digit7) / 10;
+    int digit6 = test1 % 10;
+
+    test1 = (test1 - digit6) / 10;
+    int digit5 = test1 % 10;
+
+    csv_filename[7] = digit7 + 48;
+    csv_filename[6] = digit6 + 48;
+    csv_filename[5] = digit5 + 48;
+
+    if (SD.exists(csv_filename)) {
+      tft.print(csv_filename);
+      SD.remove(csv_filename); 
+      tft.println(" removed");
+    } else {
+      no_files = true;
+    }
+  }
+}
+
+//---------- Video Player ----------
+void Video(){
+  char vidname[10] = "00001.bmp";
+  long index_filename;
+  long index_start = 0;
+  for (int index_filename = 1; index_filename <= 448 ; index_filename+=10){
+    index_next_filename = index_filename;
+
+    long test1 = index_next_filename;
+    int digit7 = test1 % 10;
+
+    test1 = (test1 - digit7) / 10;
+    int digit6 = test1 % 10;
+
+    test1 = (test1 - digit6) / 10;
+    int digit5 = test1 % 10;
+
+    vidname[4] = digit7 + 48;
+    vidname[3] = digit6 + 48;
+    vidname[2] = digit5 + 48;
+    reader.drawBMP(vidname, tft, 0, 0);
+  }
+}
 
 //---------- Data analysis ----------
 bool analyze(const std::string& s){
