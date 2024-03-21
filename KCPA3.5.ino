@@ -46,10 +46,12 @@ static float xScale;
 int16_t spec_data[DATA_SIZE];
 
 //---------- SD CARD AND TFT ----------
+#define USE_TFT 1
 #define SD_CS    9 // SD card select pin
 #define TFT_CS  12 // TFT select pin
 #define TFT_DC   10 // TFT display/command pin
 #define TFT_RST  11 // Or set to -1 and connect to Arduino RESET pin
+#define TFT_LIT 6
 
 SdFat                SD;         // SD card filesystem
 Adafruit_ImageReader reader(SD); // Image-reader object, pass in SD filesys
@@ -119,7 +121,7 @@ void setup(void) {
   ImageReturnCode stat; // Status from image-reading functions
   // Serial.begin(9600);
   // while(!Serial);       // Wait for Serial Monitor before continuing
-  tft.init(135, 240);           // Init ST7789 320x240
+  initTFT();
 
   // SD card
   tft.print(F("Initializing filesystem..."));
@@ -130,16 +132,14 @@ void setup(void) {
   tft.println(F("OK!"));
 
   // Serial.print(F("Loading startup.bmp to screen..."));
+  tft.setRotation(0);
   reader.drawBMP("/startup.bmp", tft, 0, 0);
-
+  tft.setRotation(3);
 
   analogReadResolution(12);
 
 
   //---------- BLUETOOTH ----------
-  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-  tft.setRotation(3);
-  tft.setCursor(1, 1);
   tft.println(__FILE__);
   tft.print(__DATE__);
   tft.print("  ");
@@ -229,6 +229,8 @@ void setup(void) {
   tft.println(F("set # - set run # (legacy)"));
   tft.println(F("sp - audio spectrum (restart to exit)"));
   tft.println(csv_filename);
+  // tft.sendCommand(ST77XX_BACKLIGHT);
+  // analogWrite(TFT_LIT, 0);
 }
 
 
@@ -350,6 +352,12 @@ void loop() {
 
 }
 
+//---------- PRINTING TO TFT / SERIAL ----------
+void STPrint(const __FlashStringHelper*text){
+  if(Serial){
+    Serial.println(text);
+  }
+}
 
 
 //---------- A small helper ----------
@@ -409,17 +417,21 @@ int extractIntegerWords(string str){
 //---------- data taking and saving ----------
 void takeData (double run_freq, int run){
   uint16_t data[size];
-  ble.println("starting data taking");    
+  ble.println("starting data taking");
   // wait for sound to start up  
   blink_LED(300);
+  digitalWrite(BLUEFRUIT_SPI_RST, LOW);
+  digitalWrite(TFT_RST, LOW);
   digitalWrite(LED_pin, HIGH);
-
   // take the data
   startTime = micros();
   for (int i = 0; i<size; i++){
     data[i] = analogRead(A0);
   }
   freq = size/((micros() - startTime) * 0.000001);
+  digitalWrite(BLUEFRUIT_SPI_RST, HIGH);
+  digitalWrite(TFT_RST, HIGH);
+  initTFT();
 
   // save the data THANKS GEORGE FOR FILENAMING
   // find an unused file name
@@ -628,6 +640,14 @@ void Video(){
     vidname[2] = digit5 + 48;
     reader.drawBMP(vidname, tft, 0, 0);
   }
+}
+
+//---------- TFT INITIALIZATION SEQUENCE ----------
+void initTFT(){
+  tft.init(135, 240);           // Init ST7789 320x240
+  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  tft.setRotation(3);
+  tft.setCursor(1, 1);
 }
 
 //---------- Data analysis ----------
